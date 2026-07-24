@@ -1,0 +1,60 @@
+name: Build and Push Nginx Image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Dockerfile'
+  workflow_dispatch:
+    inputs:
+      nginx_version:
+        description: 'Nginx version to build (leave empty to use Dockerfile default)'
+        required: false
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: autosre/nginx-unprivileged
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract nginx version from Dockerfile
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.nginx_version }}" ]; then
+            echo "nginx_version=${{ github.event.inputs.nginx_version }}" >> "$GITHUB_OUTPUT"
+          else
+            ver=$(grep -oP '(?<=NGINX_VERSION=)\S+' Dockerfile | head -1)
+            echo "nginx_version=${ver}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            UID=1001
+            GID=1001
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.nginx_version }}
+            ${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
