@@ -49,7 +49,24 @@ RUN set -x \
     && mkdir /docker-entrypoint.d
 
 # Configure nginx to run as unprivileged user on port 8080
-RUN sed -i 's,listen       80;,listen       8080;,' /etc/nginx/conf.d/default.conf \
+RUN mkdir -p /etc/nginx/conf.d \
+    && if [ -f /etc/nginx/conf.d/default.conf ]; then \
+        sed -i 's,listen       80;,listen       8080;,' /etc/nginx/conf.d/default.conf; \
+    else \
+        printf '%s\n' \
+            'server {' \
+            '    listen       8080;' \
+            '    server_name  localhost;' \
+            '    location / {' \
+            '        root   /usr/share/nginx/html;' \
+            '        index  index.html index.htm;' \
+            '    }' \
+            '    error_page   500 502 503 504  /50x.html;' \
+            '    location = /50x.html {' \
+            '        root   /usr/share/nginx/html;' \
+            '    }' \
+            '}' > /etc/nginx/conf.d/default.conf; \
+    fi \
     && sed -i '/user  nginx;/d' /etc/nginx/nginx.conf \
     && sed -i 's,/run/nginx.pid,/tmp/nginx.pid,' /etc/nginx/nginx.conf \
     && printf '%s\n' \
