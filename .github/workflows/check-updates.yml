@@ -23,7 +23,7 @@ jobs:
         id: current
         run: |
           nginx_ver=$(grep -oP '(?<=NGINX_VERSION=)\S+' Dockerfile | head -1)
-          alpine_ver=$(grep -oP '(?<=ALPINE_VERSION=)\S+' Dockerfile | head -1)
+          alpine_ver=$(grep -oP '(?<=IMAGE=alpine:)\S+' Dockerfile | head -1)
           echo "nginx_version=${nginx_ver}" >> "$GITHUB_OUTPUT"
           echo "alpine_version=${alpine_ver}" >> "$GITHUB_OUTPUT"
           echo "Current: nginx=${nginx_ver}, alpine=${alpine_ver}"
@@ -31,24 +31,21 @@ jobs:
       - name: Check latest nginx stable version
         id: latest_nginx
         run: |
-          # Query nginx.org packages for alpine to find latest stable
-          ALPINE_VER="${{ steps.current.outputs.alpine_version }}"
-          REPO_URL="https://nginx.org/packages/alpine/v${ALPINE_VER}/main/x86_64/"
-          
-          # Get latest nginx version from the repo
-          LATEST=$(wget -qO- "$REPO_URL" 2>/dev/null \
+          # Query nginx.org download page for latest stable tarball
+          LATEST=$(wget -qO- "https://nginx.org/en/download.html" 2>/dev/null \
             | grep -oP 'nginx-\K[0-9]+\.[0-9]+\.[0-9]+' \
+            | grep -P '^\d+\.\d*[02468]\.' \
             | sort -V | tail -1)
-          
+
           if [ -z "$LATEST" ]; then
-            echo "Failed to fetch nginx version from repo"
+            echo "Failed to fetch nginx version"
             echo "available=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          
+
           echo "latest=${LATEST}" >> "$GITHUB_OUTPUT"
           echo "Latest nginx stable: ${LATEST}"
-          
+
           if [ "$LATEST" != "${{ steps.current.outputs.nginx_version }}" ]; then
             echo "nginx_updated=true" >> "$GITHUB_OUTPUT"
           else
@@ -58,25 +55,22 @@ jobs:
       - name: Check latest Alpine version
         id: latest_alpine
         run: |
-          # Check latest Alpine minor version for the current major.minor
           CURRENT="${{ steps.current.outputs.alpine_version }}"
           MAJOR_MINOR=$(echo "$CURRENT" | grep -oP '^\d+\.\d+')
-          
-          # Query Docker Hub for latest alpine tag matching our major.minor
-          LATEST=$(wget -qO- "https://registry.hub.docker.com/v2/repositories/library/alpine/tags?page_size=100&name=${MAJOR_MINOR}" 2>/dev/null \
-            | grep -oP "\"name\":\s*\"${MAJOR_MINOR}\.[0-9]+\"" \
-            | grep -oP '\d+\.\d+\.\d+' \
+
+          # Check if there's a newer major.minor Alpine release
+          LATEST=$(wget -qO- "https://dl-cdn.alpinelinux.org/alpine/" 2>/dev/null \
+            | grep -oP 'v\K[0-9]+\.[0-9]+' \
             | sort -V | tail -1)
-          
-          # If no patch version found, use major.minor as-is
+
           if [ -z "$LATEST" ]; then
-            LATEST="$CURRENT"
+            LATEST="$MAJOR_MINOR"
           fi
-          
+
           echo "latest=${LATEST}" >> "$GITHUB_OUTPUT"
           echo "Latest Alpine: ${LATEST}"
-          
-          if [ "$LATEST" != "$CURRENT" ]; then
+
+          if [ "$LATEST" != "$MAJOR_MINOR" ]; then
             echo "alpine_updated=true" >> "$GITHUB_OUTPUT"
           else
             echo "alpine_updated=false" >> "$GITHUB_OUTPUT"
@@ -86,7 +80,7 @@ jobs:
         id: update
         run: |
           UPDATED=false
-          
+
           if [ "${{ steps.latest_nginx.outputs.nginx_updated }}" = "true" ]; then
             OLD_VER="${{ steps.current.outputs.nginx_version }}"
             NEW_VER="${{ steps.latest_nginx.outputs.latest }}"
@@ -94,15 +88,15 @@ jobs:
             echo "Updated nginx: ${OLD_VER} -> ${NEW_VER}"
             UPDATED=true
           fi
-          
+
           if [ "${{ steps.latest_alpine.outputs.alpine_updated }}" = "true" ]; then
             OLD_VER="${{ steps.current.outputs.alpine_version }}"
             NEW_VER="${{ steps.latest_alpine.outputs.latest }}"
-            sed -i "s/ALPINE_VERSION=${OLD_VER}/ALPINE_VERSION=${NEW_VER}/" Dockerfile
+            sed -i "s|IMAGE=alpine:${OLD_VER}|IMAGE=alpine:${NEW_VER}|" Dockerfile
             echo "Updated alpine: ${OLD_VER} -> ${NEW_VER}"
             UPDATED=true
           fi
-          
+
           echo "updated=${UPDATED}" >> "$GITHUB_OUTPUT"
 
       - name: Commit and push changes
@@ -110,10 +104,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
+
           NGINX_VER=$(grep -oP '(?<=NGINX_VERSION=)\S+' Dockerfile | head -1)
-          ALPINE_VER=$(grep -oP '(?<=ALPINE_VERSION=)\S+' Dockerfile | head -1)
-          
+          ALPINE_VER=$(grep -oP '(?<=IMAGE=alpine:)\S+' Dockerfile | head -1)
+
           git add Dockerfile
           git commit -m "chore: bump nginx=${NGINX_VER} alpine=${ALPINE_VER}"
           git push
