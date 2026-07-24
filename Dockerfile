@@ -52,12 +52,15 @@ RUN set -x \
 RUN sed -i 's,listen       80;,listen       8080;,' /etc/nginx/conf.d/default.conf \
     && sed -i '/user  nginx;/d' /etc/nginx/nginx.conf \
     && sed -i 's,/run/nginx.pid,/tmp/nginx.pid,' /etc/nginx/nginx.conf \
-    && sed -i '/^http {/a\' /etc/nginx/nginx.conf \
-    && sed -i '/^http {/a\    scgi_temp_path /tmp/scgi_temp;' /etc/nginx/nginx.conf \
-    && sed -i '/^http {/a\    uwsgi_temp_path /tmp/uwsgi_temp;' /etc/nginx/nginx.conf \
-    && sed -i '/^http {/a\    fastcgi_temp_path /tmp/fastcgi_temp;' /etc/nginx/nginx.conf \
-    && sed -i '/^http {/a\    client_body_temp_path /tmp/client_temp;' /etc/nginx/nginx.conf \
-    && sed -i '/^http {/a\    proxy_temp_path /tmp/proxy_temp;' /etc/nginx/nginx.conf \
+    && printf '%s\n' \
+        '    proxy_temp_path /tmp/proxy_temp;' \
+        '    client_body_temp_path /tmp/client_temp;' \
+        '    fastcgi_temp_path /tmp/fastcgi_temp;' \
+        '    uwsgi_temp_path /tmp/uwsgi_temp;' \
+        '    scgi_temp_path /tmp/scgi_temp;' \
+        > /tmp/nginx_temp_paths.conf \
+    && sed -i '/^http {/r /tmp/nginx_temp_paths.conf' /etc/nginx/nginx.conf \
+    && rm -f /tmp/nginx_temp_paths.conf \
     && chown -R $UID:0 /var/cache/nginx \
     && chmod -R g+w /var/cache/nginx \
     && chown -R $UID:0 /etc/nginx \
