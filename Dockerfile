@@ -56,13 +56,16 @@ RUN set -x \
     && mkdir /docker-entrypoint.d
 
 # implement changes required to run NGINX as an unprivileged user
-RUN set -x \
-    && nginx -v \
-    && ls /etc/nginx/conf.d/default.conf \
-    && sed -i 's,listen       80;,listen       8080;,' /etc/nginx/conf.d/default.conf \
-    && sed -i '/user  nginx;/d' /etc/nginx/nginx.conf \
+RUN sed -i '/user  nginx;/d' /etc/nginx/nginx.conf \
     && sed -i 's,\(/var\)\{0\,1\}/run/nginx.pid,/tmp/nginx.pid,' /etc/nginx/nginx.conf \
     && sed -i "/^http {/a \    proxy_temp_path /tmp/proxy_temp;\n    client_body_temp_path /tmp/client_temp;\n    fastcgi_temp_path /tmp/fastcgi_temp;\n    uwsgi_temp_path /tmp/uwsgi_temp;\n    scgi_temp_path /tmp/scgi_temp;\n" /etc/nginx/nginx.conf \
+# ensure default.conf exists with port 8080
+    && mkdir -p /etc/nginx/conf.d \
+    && if [ -f /etc/nginx/conf.d/default.conf ]; then \
+        sed -i 's,listen       80;,listen       8080;,' /etc/nginx/conf.d/default.conf; \
+    else \
+        printf 'server {\n    listen       8080;\n    server_name  localhost;\n    location / {\n        root   /usr/share/nginx/html;\n        index  index.html index.htm;\n    }\n    error_page   500 502 503 504  /50x.html;\n    location = /50x.html {\n        root   /usr/share/nginx/html;\n    }\n}\n' > /etc/nginx/conf.d/default.conf; \
+    fi \
 # nginx user must own the cache and etc directory to write cache and tweak the nginx config
     && chown -R $UID:0 /var/cache/nginx \
     && chmod -R g+w /var/cache/nginx \
