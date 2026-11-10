@@ -1,4 +1,4 @@
-ARG IMAGE=alpine:3.24
+ARG IMAGE=alpine:3.25
 FROM $IMAGE
 
 LABEL maintainer="idouying"
